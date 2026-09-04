@@ -6,7 +6,7 @@ filing date, never at the (earlier) period-of-report date.
 """
 from __future__ import annotations
 
-import io
+import re
 import time
 from datetime import date
 
@@ -31,6 +31,20 @@ def _polite_get(url: str, **kwargs) -> requests.Response:
     return resp
 
 
+#: form.idx rows are NOT reliably fixed-width (the header label positions don't match
+#: the true data column boundaries — verified empirically: slicing by header.index()
+#: truncates Date Filed and corrupts File Name). Parse by field content instead:
+#: form_type (may itself contain a space, e.g. "SC 13G/A"), then company name (greedy,
+#: may contain single spaces/commas), then CIK (digits), then an ISO date, then the path.
+_FORM_IDX_LINE = re.compile(
+    r"^(?P<form_type>\S+(?: \S+)*?)\s{2,}"
+    r"(?P<company>.+?)\s{2,}"
+    r"(?P<cik>\d+)\s{2,}"
+    r"(?P<date_filed>\d{4}-\d{2}-\d{2})\s+"
+    r"(?P<path>\S+)\s*$"
+)
+
+
 def quarterly_form_index(year: int, quarter: int, refresh: bool = False) -> pd.DataFrame:
     """Parse EDGAR's ``form.idx`` for a quarter into a DataFrame.
 
@@ -43,18 +57,20 @@ def quarterly_form_index(year: int, quarter: int, refresh: bool = False) -> pd.D
     url = f"{_BASE}/edgar/full-index/{year}/QTR{quarter}/form.idx"
     text = _polite_get(url).text
     lines = text.splitlines()
-    # Header ends with a dashed separator line; columns are fixed-width.
+    # Header ends with a dashed separator line; data rows follow.
     sep_i = next(i for i, ln in enumerate(lines) if set(ln.strip()) == {"-"})
-    header = lines[sep_i - 1]
-    starts = [header.index(c) for c in ("Form Type", "Company Name", "CIK", "Date Filed", "File Name")]
     rows = []
+    unparsed = 0
     for ln in lines[sep_i + 1 :]:
         if not ln.strip():
             continue
-        fields = [
-            ln[s:e].strip() for s, e in zip(starts, starts[1:] + [None])  # type: ignore[list-item]
-        ]
-        rows.append(fields)
+        m = _FORM_IDX_LINE.match(ln)
+        if not m:
+            unparsed += 1
+            continue
+        rows.append(m.groups())
+    if unparsed:
+        print(f"[edgar] {year} Q{quarter}: {unparsed} form.idx lines did not match the parser")
     df = pd.DataFrame(rows, columns=["form_type", "company", "cik", "date_filed", "path"])
     df["cik"] = pd.to_numeric(df["cik"], errors="coerce").astype("Int64")
     df["date_filed"] = pd.to_datetime(df["date_filed"], errors="coerce").dt.date
