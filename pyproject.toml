@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "timesafe-fin"
+version = "0.1.0"
+description = "TimeSafe-Fin: causal measurement and correction of look-ahead bias in financial LLM evaluation"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "James Murdza", email = "jamesmurdza@gmail.com" }]
+dependencies = [
+    "numpy>=1.24",
+    "pandas>=2.0",
+    "requests>=2.31",
+    "scikit-learn>=1.3",
+    "scipy>=1.11",
+    "pyarrow>=14.0",
+    "lxml>=4.9",
+]
+
+[project.optional-dependencies]
+models = [
+    "torch>=2.1",
+    "transformers>=4.48",       # ModernBERT (ChronoBERT) requires >=4.48
+    "accelerate>=0.30",
+    "bitsandbytes>=0.43",       # 4-bit quantization for probe models on 4GB VRAM
+]
+dev = ["pytest>=7.4", "ruff>=0.4"]
+
+[tool.setuptools.packages.find]
+include = ["timesafe*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
